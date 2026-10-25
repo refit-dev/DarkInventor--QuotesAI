@@ -4,9 +4,10 @@ import { buffer } from "micro";
 import { db } from "@/lib/db";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth/next";
+import { getSubscriptionPeriodEnd, getInvoiceSubscription } from './stripeSubscriptionPeriod';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: '2024-04-10',
+  apiVersion: '2026-09-30.endive',
 });
 
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -108,7 +109,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event, req: NextApiR
       data: {
         stripeSubscriptionId: subscription.id,
         stripePriceId: subscription.items.data[0].price.id,
-        stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        stripeCurrentPeriodEnd: new Date((getSubscriptionPeriodEnd(subscription, (items) => items[0])) * 1000),
         hasPaid: true,
       },
     });
@@ -125,7 +126,7 @@ async function handleInvoicePaymentSucceeded(event: Stripe.Event, req: NextApiRe
   console.log("Invoice:", invoice);
 
   try {
-    const subscriptionId = invoice.subscription as string;
+    const subscriptionId = (getInvoiceSubscription(invoice)) as string;
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
     const session = await getServerSession(req, res, authOptions);
@@ -150,7 +151,7 @@ async function handleInvoicePaymentSucceeded(event: Stripe.Event, req: NextApiRe
     await db.user.update({
       where: { id: session.user.id },
       data: {
-        stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        stripeCurrentPeriodEnd: new Date((getSubscriptionPeriodEnd(subscription, (items) => items[0])) * 1000),
       },
     });
 
